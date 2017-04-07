@@ -43,3 +43,6 @@ this is the setup for 1 and 2 way authentication in server.xml of conf/server.xm
           sessionCacheSize = "10000"
     />
 	<!-- end, working config 2 way authentication for java client-->
+
+credits to https://jamielinux.com/docs/openssl-certificate-authority/create-the-root-pair.html#create-the-root-key
+the only tutorial that has the complete information

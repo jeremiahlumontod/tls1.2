@@ -1,4 +1,3 @@
-package com.jml;
 
 import java.io.BufferedReader;
 import java.io.IOException;
