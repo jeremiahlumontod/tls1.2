@@ -44,5 +44,9 @@ this is the setup for 1 and 2 way authentication in server.xml of conf/server.xm
     />
 	<!-- end, working config 2 way authentication for java client-->
 
+
+
+i used openssl 1.1.0e and java 1.8.0_121-b13. find in the projects on how to build openssl 1.1.0e
+
 credits to https://jamielinux.com/docs/openssl-certificate-authority/create-the-root-pair.html#create-the-root-key
 the only tutorial that has the complete information
