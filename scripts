@@ -1,0 +1,129 @@
+
+
+> create root ca, sub ca, tomcatserver keystore, tomcat client keystore
+this approach works both on 1 way and 2 way authentication both for browser and java as clients
+
+naming convention: when creating certificates, all common name, organization name,
+state/province name shall be localhost
+root ca shall have organizational unit name of root.ca so we can identify it
+sub ca shall have sub.ca
+tomcat server shall have tomcat.server
+tomcat client shall have tomcat.client
+
+touch index.txt
+echo 1000 > serial
+openssl genrsa -aes256 -out private/rootca.key.pem 4096
+chmod 400 private/rootca.key.pem
+openssl req -config openssl.cnf \
+      -key private/rootca.key.pem \
+      -new -x509 -days 7300 -sha256 -extensions v3_ca \
+      -out certs/rootca.cert.pem
+openssl x509 -noout -text -in certs/rootca.cert.pem
+openssl pkcs12 -export -in certs/rootca.cert.pem -inkey private/rootca.key.pem -out certs/rootca.p12
+
+
+
+cd intermediate
+touch index.txt
+echo 1000 > serial
+cd..
+openssl genrsa -aes256 \
+      -out intermediate/private/subca.key.pem 4096
+chmod 400 intermediate/private/subca.key.pem      
+openssl req -config intermediate/openssl.cnf -new -sha256 \
+      -key intermediate/private/subca.key.pem \
+      -out intermediate/csr/subca.csr.pem
+openssl ca -config openssl.cnf -extensions v3_intermediate_ca \
+      -days 3650 -notext -md sha256 \
+      -in intermediate/csr/subca.csr.pem \
+      -out intermediate/certs/subca.cert.pem            
+openssl x509 -noout -text \
+      -in intermediate/certs/subca.cert.pem
+openssl verify -CAfile certs/rootca.cert.pem \
+      intermediate/certs/subca.cert.pem
+cat intermediate/certs/subca.cert.pem \
+      certs/rootca.cert.pem > intermediate/certs/root.sub.ca.chain.cert.pem
+chmod 444 intermediate/certs/root.sub.ca.chain.cert.pem
+openssl pkcs12 -export -in intermediate/certs/subca.cert.pem -inkey intermediate/private/subca.key.pem -out intermediate/certs/subca.p12
+
+
+create a subca .p12 using the concatenated rootca and subca pem and use subca key as the key
+lets see if its okay to not import this and still works
+because technically this will become a certificate but its usages is for subordinate ca only
+lets just import rootca.p12 and subca.p12 first as well as tomcatclient.p12
+openssl pkcs12 -export -in intermediate/certs/root.sub.ca.chain.cert.pem -inkey intermediate/private/subca.key.pem -out intermediate/certs/root.sub.ca.chain.cert.p12
+
+
+openssl genrsa -aes256 \
+      -out intermediate/private/tomcatserver.key.pem 2048
+chmod 400 intermediate/private/tomcatserver.key.pem
+openssl req -config intermediate/openssl.cnf \
+      -key intermediate/private/tomcatserver.key.pem \
+      -new -sha256 -out intermediate/csr/tomcatserver.csr.pem
+openssl ca -config intermediate/openssl.cnf \
+      -extensions server_cert -days 375 -notext -md sha256 \
+      -in intermediate/csr/tomcatserver.csr.pem \
+      -out intermediate/certs/tomcatserver.cert.pem
+chmod 444 intermediate/certs/tomcatserver.cert.pem
+openssl x509 -noout -text \
+      -in intermediate/certs/tomcatserver.cert.pem
+openssl verify -CAfile intermediate/certs/root.sub.ca.chain.cert.pem \
+      intermediate/certs/tomcatserver.cert.pem
+openssl pkcs12 -export -in intermediate/certs/tomcatserver.cert.pem -inkey intermediate/private/tomcatserver.key.pem -out intermediate/certs/tomcatserver.p12
+      
+
+
+openssl genrsa -aes256 \
+      -out intermediate/private/tomcatclient.key.pem 2048
+chmod 400 intermediate/private/tomcatclient.key.pem
+openssl req -config intermediate/openssl.cnf \
+      -key intermediate/private/tomcatclient.key.pem \
+      -new -sha256 -out intermediate/csr/tomcatclient.csr.pem
+openssl ca -config intermediate/openssl.cnf \
+      -extensions server_cert -days 375 -notext -md sha256 \
+      -in intermediate/csr/tomcatclient.csr.pem \
+      -out intermediate/certs/tomcatclient.cert.pem
+chmod 444 intermediate/certs/tomcatclient.cert.pem
+openssl x509 -noout -text \
+      -in intermediate/certs/tomcatclient.cert.pem
+openssl verify -CAfile intermediate/certs/root.sub.ca.chain.cert.pem \
+      intermediate/certs/tomcatclient.cert.pem
+openssl pkcs12 -export -in intermediate/certs/tomcatclient.cert.pem -inkey intermediate/private/tomcatclient.key.pem -out intermediate/certs/tomcatclient.p12
+
+
+/**cleanup repo
+keytool -list -keystore tomcatserver.jks -storepass 123456
+keytool -delete -alias tomcatclientcert -keystore tomcatserver.jks -storepass 123456
+keytool -delete -alias sub.ca.certs.jml.com -keystore tomcatserver.jks -storepass 123456
+keytool -delete -alias root.ca.certs.jml.com -keystore tomcatserver.jks -storepass 123456
+
+
+/** new certificates
+tomcat server key store (copied jmlservertruststore.jks that has root and intermediate ca imported)
+keytool -import -trustcacerts -alias root.ca.certs.jml.com -file certs/rootca.cert.pem -keystore tomcatserver.jks -storepass 123456
+keytool -import -trustcacerts -alias sub.ca.certs.jml.com -file intermediate/certs/subca.cert.pem -keystore tomcatserver.jks -storepass 123456
+keytool -importkeystore -deststorepass 123456 -destkeystore tomcatserver.jks -srckeystore intermediate/certs/tomcatserver.p12 -srcstoretype PKCS12
+The server has to trust the client's certificates too. As they are self-signed they have to be added to the server's truststore.
+keytool -list -keystore tomcatserver.jks -storepass 123456
+
+tomcat client key store (copied jmlservertruststore.jks that has root and intermediate ca imported)
+keytool -import -trustcacerts -alias root.ca.certs.jml.com -file certs/rootca.cert.pem -keystore tomcatserver.jks -storepass 123456
+keytool -import -trustcacerts -alias sub.ca.certs.jml.com -file intermediate/certs/subca.cert.pem -keystore tomcatserver.jks -storepass 123456
+keytool -importkeystore -deststorepass 123456 -destkeystore tomcatclient.jks -srckeystore intermediate/certs/tomcatclient.p12 -srcstoretype PKCS12
+keytool -list -keystore tomcatclient.jks -storepass 123456
+
+/**add to trust stores for 2 way authentication
+keytool -import -alias tomcatservercert -file intermediate/certs/tomcatserver.cert.pem -keystore tomcatclienttruststore.jks -storepass 123456
+keytool -import -alias tomcatservercert -file intermediate/certs/tomcatserver.cert.pem -keystore tomcatservertruststore.jks -storepass 123456
+keytool -import -alias tomcatclientcert -file intermediate/certs/tomcatclient.cert.pem -keystore tomcatclienttruststore.jks -storepass 123456
+keytool -import -alias tomcatclientcert -file intermediate/certs/tomcatclient.cert.pem -keystore tomcatservertruststore.jks -storepass 123456
+keytool -list -keystore tomcatclienttruststore.jks -storepass 123456
+keytool -list -keystore tomcatservertruststore.jks -storepass 123456
+
+*/ end, new certificates
+
+/**add to OSX keychain
+sudo security import certs/rootca.p12 -k /Library/Keychains/System.keychain
+sudo security import intermediate/certs/subca.p12 -k /Library/Keychains/System.keychain
+sudo security import intermediate/certs/tomcatserver.p12 -k /Library/Keychains/System.keychain
+sudo security import intermediate/certs/tomcatclient.p12 -k /Library/Keychains/System.keychain
