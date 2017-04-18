@@ -50,3 +50,9 @@ i used openssl 1.1.0e and java 1.8.0_121-b13. find in the projects on how to bui
 
 credits to https://jamielinux.com/docs/openssl-certificate-authority/create-the-root-pair.html#create-the-root-key
 the only tutorial that has the complete information
+
+the example java code TwoWaySSLClient.java can be use in a one way and two authentication. the important thing is that the 
+client side truststore and the server side truststore has both certificates of client app and server app, means,
+in the client side app it should have the public certificate of the server, and in the server side app, it should have
+the public certificate of the client app
+
